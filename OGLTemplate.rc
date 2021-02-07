@@ -1,0 +1,3 @@
+#include "OGLTemplate.h"
+
+APP_ICON	ICON	app_icon.ico
