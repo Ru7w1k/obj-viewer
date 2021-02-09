@@ -1,11 +1,15 @@
 // headers
 #include <windows.h>
 #include <stdio.h>
+#include <string.h>
 #include <gl/GL.h>
+#include <gl/GLU.h>
 
 #include "OGLTemplate.h"
+#include "MeshLoading.h"
 
 #pragma comment(lib, "opengl32.lib")
+#pragma comment(lib, "glu32.lib")
 
 // macros
 #define WIN_WIDTH  800
@@ -22,11 +26,12 @@ bool gbFullscreen   = false;
 bool gbActiveWindow = false;
 
 HWND  ghwnd  = NULL;
-FILE* gpFile = NULL;
 
 DWORD dwStyle;
 WINDOWPLACEMENT wpPrev = { sizeof(WINDOWPLACEMENT) };
 
+//Animation/Transformation variables
+GLfloat gRotateAngle = 0.0f;
 
 // WinMain()
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdLine, int iCmdShow)
@@ -44,14 +49,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdLi
 
 	// code
 	// open file for logging
-	if (fopen_s(&gpFile, "obj-viewer.log", "w") != 0)
+	if (fopen_s(&gpLogFile, "obj-viewer.log", "w") != 0)
 	{
 		MessageBox(NULL, TEXT("Cannot open obj-viewer.log file.."), TEXT("Error"), MB_OK | MB_ICONERROR);
 		exit(0);
 	}
 	else
 	{ 
-		fprintf(gpFile, "==== Application Started ====\n");
+		fprintf(gpLogFile, "==== Application Started ====\n");
 	}
 
 	// initialization of WNDCLASSEX
@@ -229,6 +234,7 @@ void initialize(void)
 {
 	// function declarations
 	void resize(int, int);
+	void loadMeshData(char*);
 
 	// variable declarations
 	PIXELFORMATDESCRIPTOR pfd;
@@ -247,56 +253,127 @@ void initialize(void)
 	pfd.cGreenBits = 8;
 	pfd.cBlueBits = 8;
 	pfd.cAlphaBits = 8;
+	pfd.cDepthBits = 32;
 
 	iPixelFormatIndex = ChoosePixelFormat(ghdc, &pfd);
 	if (iPixelFormatIndex == 0)
 	{
-		fprintf(gpFile, "ChoosePixelFormat() failed..\n");
+		fprintf(gpLogFile, "ChoosePixelFormat() failed..\n");
 		DestroyWindow(ghwnd);
 	}
 
 	if (SetPixelFormat(ghdc, iPixelFormatIndex, &pfd) == FALSE)
 	{
-		fprintf(gpFile, "SetPixelFormat() failed..\n");
+		fprintf(gpLogFile, "SetPixelFormat() failed..\n");
 		DestroyWindow(ghwnd);
 	}
 
 	ghrc = wglCreateContext(ghdc);
 	if (ghrc == NULL)
 	{
-		fprintf(gpFile, "wglCreateContext() failed..\n");
+		fprintf(gpLogFile, "wglCreateContext() failed..\n");
 		DestroyWindow(ghwnd);
 	}
 
 	if (wglMakeCurrent(ghdc, ghrc) == FALSE)
 	{
-		fprintf(gpFile, "wglMakeCurrent() failed..\n");
+		fprintf(gpLogFile, "wglMakeCurrent() failed..\n");
 		DestroyWindow(ghwnd);
 	}
 
-	// set clear color
+	//Enable 3D
+	glShadeModel(GL_SMOOTH);
+	glClearDepth(1.0);
+	glEnable(GL_DEPTH_TEST);
+	glDepthFunc(GL_LEQUAL);
+	glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);
+
+	//Set blue color
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+	
+	char str[] = "standard-female-figure.obj";
+	loadMeshData(str);
 
 	// warm-up resize call
-	// resize(WIN_WIDTH, WIN_HEIGHT);
+	 resize(WIN_WIDTH, WIN_HEIGHT);
 }
 
 void resize(int width, int height)
 {
-	// code
+	//Local variables
+	GLfloat fWidth = 0.0f;
+	GLfloat fHeight = 0.0f;
+
+	//We need to do width/height somewhere in future. So if height is 0 we initialize that back to 1
 	if (height == 0)
 		height = 1;
 
-	glViewport(0, 0, (GLsizei)width, (GLsizei)height);	
+	glViewport(0, 0, (GLsizei)width, (GLsizei)height);
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+
+	fWidth = (GLfloat)width;
+	fHeight = (GLfloat)height;
+
+	gluPerspective(45.0f, fWidth / fHeight, 0.1f, 100.0f);
 }
 
 void display(void)
 {
-	// code
-	glClear(GL_COLOR_BUFFER_BIT);
+	//Function declarations
+	void update();
 
-	// Win32 API to swap the buffers!
+	//code
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Paint my color thats what GL_COLOR_BUFFER_BIT
+
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+
+	glTranslatef(0.0f, -1.50f, -4.0f); // as per Right hand rule -3 means backwards on z axis
+	glRotatef(gRotateAngle, 0.0f, 1.0f, 0.0f);
+
+	glScalef(0.10f, 0.10f, 0.10f);
+
+	glFrontFace(GL_CCW);
+	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+
+	fprintf(gpLogFile, "Size of FaceQuads are : %zu\n", gpFaceQuads->size);
+	fprintf(gpLogFile, "Size of FaceQuads are : %zu\n", gpFaceTriangles->size);
+
+	//Show all quads
+	for (int i = 0; i != gpFaceQuads->size; i++)
+	{
+		glBegin(GL_QUADS);
+		for (int j = 0; j != QUAD_VERTICES; j++)
+		{
+			int vi = gpFaceQuads->pp_arr[i][j] - 1;
+			glVertex3f(gpVertices->pp_arr[vi][0], gpVertices->pp_arr[vi][1], gpVertices->pp_arr[vi][2]);
+		}
+		glEnd();
+	}
+
+	//Show all triangles
+	for (int i = 0; i != gpFaceTriangles->size; i++)
+	{
+		glBegin(GL_TRIANGLES);
+		for (int j = 0; j != TRIANGE_VERTICES; j++)
+		{
+			int vi = gpFaceTriangles->pp_arr[i][j] - 1;
+			glVertex3f(gpVertices->pp_arr[vi][0], gpVertices->pp_arr[vi][1], gpVertices->pp_arr[vi][2]);
+		}
+		glEnd();
+	}
+
+	update();
 	SwapBuffers(ghdc);
+}
+
+void update(void)
+{
+	if (gRotateAngle >= 360.0f)
+	gRotateAngle = 0.0f;
+
+	gRotateAngle += 0.025f;
 }
 
 void uninitialize(void)
@@ -335,11 +412,11 @@ void uninitialize(void)
 		ghdc = NULL;
 	}
 
-	if (gpFile)
+	if (gpLogFile)
 	{
-		fprintf(gpFile, "==== Application Terminated ====\n");
-		fclose(gpFile);
-		gpFile = NULL;
+		fprintf(gpLogFile, "==== Application Terminated ====\n");
+		fclose(gpLogFile);
+		gpLogFile = NULL;
 	}
 }
 
