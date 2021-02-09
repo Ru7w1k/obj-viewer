@@ -142,6 +142,7 @@
     <ClCompile Include="OGLTemplate.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="MeshLoading.h" />
     <ClInclude Include="OGLTemplate.h" />
   </ItemGroup>
   <ItemGroup>
